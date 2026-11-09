@@ -12,18 +12,32 @@ export function parseUtc(raw: unknown): Date {
   return d;
 }
 
-/** Смещение таймзоны относительно UTC в минутах в момент `at` (Europe/Moscow → 180). */
+const formatters = new Map<string, Intl.DateTimeFormat>();
+
+function formatter(timeZone: string): Intl.DateTimeFormat {
+  let f = formatters.get(timeZone);
+  if (!f) {
+    f = new Intl.DateTimeFormat("en-US", {
+      timeZone,
+      hourCycle: "h23",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    });
+    formatters.set(timeZone, f);
+  }
+  return f;
+}
+
+/**
+ * Смещение таймзоны относительно UTC в минутах в момент `at` (Europe/Moscow → 180).
+ * Смещение зависит от момента: летнее/зимнее время, исторические изменения зон.
+ */
 export function tzOffsetMinutes(timeZone: string, at: Date): number {
-  const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone,
-    hourCycle: "h23",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  }).formatToParts(at);
+  const parts = formatter(timeZone).formatToParts(at);
   const get = (type: string) => Number(parts.find((p) => p.type === type)?.value);
   const asUtc = Date.UTC(get("year"), get("month") - 1, get("day"), get("hour"), get("minute"), get("second"));
   return Math.round((asUtc - Math.floor(at.getTime() / 1000) * 1000) / 60_000);
@@ -32,6 +46,11 @@ export function tzOffsetMinutes(timeZone: string, at: Date): number {
 /** Календарная дата (YYYY-MM-DD) момента `at` при смещении `offsetMinutes`. */
 export function dateAtOffset(at: Date, offsetMinutes: number): string {
   return new Date(at.getTime() + offsetMinutes * 60_000).toISOString().slice(0, 10);
+}
+
+/** Календарная дата (YYYY-MM-DD) момента `at` в таймзоне `timeZone` — со смещением, действующим в этот момент. */
+export function dateInTimeZone(at: Date, timeZone: string): string {
+  return dateAtOffset(at, tzOffsetMinutes(timeZone, at));
 }
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { dateAtOffset, datesBetween, isCalendarDate, parseUtc, tzOffsetMinutes } from "../src/utils/time.js";
+import { dateAtOffset, dateInTimeZone, datesBetween, isCalendarDate, parseUtc, tzOffsetMinutes } from "../src/utils/time.js";
 
 describe("parseUtc", () => {
   it("строка с Z", () => {
@@ -24,12 +24,28 @@ describe("tzOffsetMinutes", () => {
     expect(tzOffsetMinutes("Asia/Novosibirsk", at)).toBe(420);
     expect(tzOffsetMinutes("America/New_York", at)).toBe(-300);
   });
+
+  it("смещение зависит от момента: летнее время", () => {
+    expect(tzOffsetMinutes("Europe/Berlin", new Date("2026-03-29T00:59:59Z"))).toBe(60);
+    expect(tzOffsetMinutes("Europe/Berlin", new Date("2026-03-29T01:00:00Z"))).toBe(120);
+    expect(tzOffsetMinutes("Europe/Berlin", new Date("2026-10-25T00:59:59Z"))).toBe(120);
+    expect(tzOffsetMinutes("Europe/Berlin", new Date("2026-10-25T01:00:00Z"))).toBe(60);
+  });
 });
 
 describe("даты", () => {
   it("dateAtOffset", () => {
     expect(dateAtOffset(new Date("2026-02-10T21:30:00Z"), 180)).toBe("2026-02-11");
     expect(dateAtOffset(new Date("2026-02-10T20:30:00Z"), 180)).toBe("2026-02-10");
+  });
+
+  it("dateInTimeZone учитывает смещение на момент `at`", () => {
+    // До перехода — CET (+1), после — CEST (+2)
+    expect(dateInTimeZone(new Date("2026-03-28T22:30:00Z"), "Europe/Berlin")).toBe("2026-03-28");
+    expect(dateInTimeZone(new Date("2026-03-29T22:30:00Z"), "Europe/Berlin")).toBe("2026-03-30");
+    expect(dateInTimeZone(new Date("2026-10-24T22:30:00Z"), "Europe/Berlin")).toBe("2026-10-25");
+    expect(dateInTimeZone(new Date("2026-10-25T22:30:00Z"), "Europe/Berlin")).toBe("2026-10-25");
+    expect(dateInTimeZone(new Date("2026-02-10T21:30:00Z"), "Europe/Moscow")).toBe("2026-02-11");
   });
 
   it("isCalendarDate", () => {

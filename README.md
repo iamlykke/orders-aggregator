@@ -36,6 +36,13 @@ docker compose run --rm orders-api webhooks --target http://host.docker.internal
 npm test
 ```
 
+Полный прогон из `TASK.md` (чистая БД → `POST /sync` → вебхуки → `daily-totals` для `c_7` в `result.json`).
+Порт — аргументом, если 3000 занят:
+
+```bash
+scripts/make-result.sh 3000
+```
+
 ## Структура
 
 ```
@@ -64,7 +71,7 @@ test/                 интеграционные тесты на реальн�
 |---|---|---|
 | POST | `/sync` | Забрать все заказы из внешнего API. Отвечает статистикой, когда всё забрано |
 | POST | `/webhooks/order` | Обновление заказа (тело — `Order` внешнего API). Повтор/устаревшая версия → `200 { result: "stale" }` |
-| GET | `/customers/:id/daily-totals?from=YYYY-MM-DD&to=YYYY-MM-DD` | Сумма оплаченных (`paid`) заказов по дням в таймзоне клиента: `[{ date, total }]` |
+| GET | `/customers/:id/daily-totals?from=YYYY-MM-DD&to=YYYY-MM-DD` | Суммы оплаченных (`paid`) заказов по дням в таймзоне клиента: `[{ date, total, gross, discount, net }]` — `gross` до скидки, `net` фактически оплачено, `discount = gross - net`, `total = gross` (совместимость). Рубли, до копейки |
 | GET | `/health` | Проверка живости |
 
 ## Внешний API (`ORDERS_API_URL`)
@@ -86,4 +93,6 @@ type Order = {
 };
 ```
 
-`discountPercent` и `amountPaid` появились в API недавно и сервисом пока не используются.
+`discountPercent` и `amountPaid` появились в API недавно (у заказов до 15.03.2026 их нет — такие заказы считаем без скидки).
+Источник `net` — `amountPaid`; если пришёл только `discountPercent`, оплата считается из него.
+После обновления до миграции `002_discounts.sql` выполните `POST /sync`: он дозаполнит скидки у уже сохранённых заказов.

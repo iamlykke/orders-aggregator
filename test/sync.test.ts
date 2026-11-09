@@ -42,4 +42,28 @@ describe("POST /sync", () => {
     expect(Number(rows[0].amount_kop)).toBe(250000);
     expect(rows[0].created_at.toISOString()).toBe("2026-02-10T21:30:00.000Z");
   });
+
+  it("дозаполняет скидку у заказов, сохранённых без неё, даже при том же updatedAt", async () => {
+    // Строка, записанная до появления скидок (или до миграции 002): amount_paid_kop = NULL
+    const o = apiOrder({ amount: 1000 });
+    await ctx.app.inject({ method: "POST", url: "/webhooks/order", payload: o });
+    ctx.api.pages.set(null, { items: [{ ...o, discountPercent: 10, amountPaid: 900 }], nextCursor: null });
+
+    expect((await ctx.app.inject({ method: "POST", url: "/sync" })).json()).toMatchObject({ applied: 1, stale: 0 });
+    const { rows } = await ctx.db.query(`SELECT amount_paid_kop FROM orders WHERE id = $1`, [o.id]);
+    expect(Number(rows[0].amount_paid_kop)).toBe(90000);
+
+    // Повторный синк той же версии — уже stale
+    expect((await ctx.app.inject({ method: "POST", url: "/sync" })).json()).toMatchObject({ applied: 0, stale: 1 });
+  });
+
+  it("версия с тем же updatedAt без скидки не затирает уже сохранённую скидку", async () => {
+    const withoutDiscount = apiOrder({ amount: 1000 });
+    const o = { ...withoutDiscount, discountPercent: 10, amountPaid: 900 };
+    await ctx.app.inject({ method: "POST", url: "/webhooks/order", payload: o });
+    ctx.api.pages.set(null, { items: [withoutDiscount], nextCursor: null });
+    expect((await ctx.app.inject({ method: "POST", url: "/sync" })).json()).toMatchObject({ stale: 1 });
+    const { rows } = await ctx.db.query(`SELECT amount_paid_kop FROM orders WHERE id = $1`, [o.id]);
+    expect(Number(rows[0].amount_paid_kop)).toBe(90000);
+  });
 });
